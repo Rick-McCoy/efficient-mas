@@ -14,6 +14,8 @@ def main(path: Path):
     assert source_path.exists(), f"Source path {source_path} does not exist"
     assert label_path.exists(), f"Label path {label_path} does not exist"
 
+    lang_map = {"en": "en-us", "jp": "ja"}
+
     langs = []
     speakers = []
     texts = []
@@ -21,7 +23,7 @@ def main(path: Path):
     for json_path in tqdm(label_path.glob("*.json")):
         with open(json_path, "r") as f:
             label = json.load(f)
-            lang = label["typeInfo"]["language"]
+            lang = lang_map[label["typeInfo"]["language"]]
             speaker = label["dialogs"]["speakerId"]
             text = label["dialogs"]["text"]
             flac_path = source_path / f"{json_path.stem}.flac"

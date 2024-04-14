@@ -1,57 +1,42 @@
 import torch
 from einops import rearrange
-from torch import Tensor
+
+from util.mask import mask_from_lengths
+from util.typing import AlignProbTensor, LengthTensor
 
 
-def log_beta_binom(query_lens: Tensor, key_lens: Tensor):
-    """
-    Compute the log probability of the beta-binomial distribution.
-
-    With a single query_len `q` and key_len `k`, the log-probability at position (i, j)
-    is given by (0-indexed):
-    ```
-        log_p(i, j) = log(BetaBinom(j | k, i + 1, q - i))
-                    = lgamma(k + 1) - lgamma(j + 1) - lgamma(k - j + 1)
-                    + lgamma(i + j + 1) + lgamma(q + k - i - j) - lgamma(q + k + 1)
-                    + lgamma(q + 1) - lgamma(i + 1) - lgamma(q - i)
-    ```
-
-    Args:
-        query_lens: The lengths of the query sequences. Shape: `(B,)`.
-        key_lens: The lengths of the key sequences. Shape: `(B,)`.
-
-    Returns:
-        The log probabilities of the beta-binomial distribution. Shape: `(B, max(query_lens), max(key_lens))`.
-    """
-
-    max_query_len = query_lens.max().item()
-    max_key_len = key_lens.max().item()
-
-    query_lens = rearrange(query_lens.double(), "b -> b () ()")
-    key_lens = rearrange(key_lens.double(), "b -> b () ()")
-
-    constant = (
-        torch.lgamma(query_lens + 1)
-        + torch.lgamma(key_lens + 1)
-        - torch.lgamma(query_lens + key_lens + 1)
+@torch.no_grad()
+def log_beta_binomial(
+    audio_lens: LengthTensor,
+    phoneme_lens: LengthTensor,
+    max_audio_len: int,
+    max_phoneme_len: int,
+) -> AlignProbTensor:
+    audio_mask = rearrange(
+        mask_from_lengths(audio_lens, max_audio_len), "b m -> b m ()"
     )
-
-    i_range = rearrange(
-        torch.arange(max_query_len, device=query_lens.device), "q -> () q ()"
+    phoneme_mask = rearrange(
+        mask_from_lengths(phoneme_lens, max_phoneme_len), "b p -> b () p"
     )
-    q_range = torch.lgamma(i_range + 1) + torch.lgamma(query_lens - i_range)
-
-    j_range = rearrange(
-        torch.arange(max_key_len, device=key_lens.device), "k -> () () k"
+    audio_lens = rearrange(audio_lens, "b -> b () ()").double()
+    phoneme_lens = rearrange(phoneme_lens, "b -> b () ()").double()
+    const = (
+        torch.lgamma(phoneme_lens + 1)
+        + torch.lgamma(audio_lens + 1)
+        - torch.lgamma(audio_lens + phoneme_lens + 1)
     )
-    k_range = torch.lgamma(j_range + 1) + torch.lgamma(key_lens - j_range + 1)
-
-    full_range = torch.lgamma(i_range + j_range + 1) + torch.lgamma(
-        query_lens + key_lens - i_range - j_range
+    p_range = rearrange(
+        torch.arange(max_phoneme_len, device=phoneme_lens.device), "p -> () () p"
     )
-
-    log_p = constant - q_range - k_range + full_range
-    log_p.masked_fill_(query_lens <= i_range, float("-inf"))
-    log_p.masked_fill_(key_lens <= j_range, float("-inf"))
-
-    return log_p
+    i_range = torch.lgamma(p_range + 1) + torch.lgamma((phoneme_lens + 1 - p_range))
+    m_range = rearrange(
+        torch.arange(max_audio_len, device=audio_lens.device), "m -> () m ()"
+    )
+    j_range = torch.lgamma(m_range + 1) + torch.lgamma((audio_lens - m_range))
+    full_range = torch.lgamma(p_range + m_range + 1) + torch.lgamma(
+        (audio_lens + phoneme_lens - p_range - m_range)
+    )
+    result = const + full_range - i_range - j_range
+    result.masked_fill_(~audio_mask, torch.finfo(torch.float16).min)
+    result.masked_fill_(~phoneme_mask, torch.finfo(torch.float16).min)
+    return result.float()

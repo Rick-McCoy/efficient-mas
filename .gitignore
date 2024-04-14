@@ -171,8 +171,11 @@ poetry.toml
 pyrightconfig.json
 
 .vscode/
-temp.py
-model-store/
+temp.*
 outputs/
-logs/
 checkpoints/
+logs/
+model-store/
+analyze.py
+samples/
+extra_files/
