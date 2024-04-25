@@ -10,11 +10,12 @@ numpy==1.26.4
 phonemizer==3.2.1
 polars==0.20.13
 pykakasi==2.2.1
+pynvml==11.5.0
 pyopenjtalk==0.3.3
 soundfile==0.12.1
 tensorboard==2.16.2
-torch==2.2.1
-torchaudio==2.2.1
+torch==2.2.2
+torchaudio==2.2.2
 torchdiffeq==0.2.3
 vocos==0.1.0
 wandb==0.16.4

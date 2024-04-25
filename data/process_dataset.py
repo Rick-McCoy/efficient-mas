@@ -14,7 +14,7 @@ def main(path: Path):
     assert source_path.exists(), f"Source path {source_path} does not exist"
     assert label_path.exists(), f"Label path {label_path} does not exist"
 
-    lang_map = {"en": "en-us", "jp": "ja"}
+    lang_map = {"en": "en-us", "jp": "ja", "es": "es", "ko": "ko"}
 
     langs = []
     speakers = []

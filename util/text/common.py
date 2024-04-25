@@ -16,12 +16,15 @@ def handle_unknown_char(char: str):
 
 
 def get_backend(lang: str, logger: Logger):
-    return EspeakBackend(
-        language=lang,
-        preserve_punctuation=True,
-        with_stress=True,
-        tie=True,
-        language_switch="remove-flags",
-        logger=logger,
-        punctuation_marks=PUNCTUATION,
-    )
+    try:
+        return EspeakBackend(
+            language=lang,
+            preserve_punctuation=True,
+            with_stress=True,
+            tie=True,
+            language_switch="remove-flags",
+            logger=logger,
+            punctuation_marks=PUNCTUATION,
+        )
+    except RuntimeError as e:
+        raise RuntimeError(f"Espeak not installed, or backend not available for language {lang}") from e

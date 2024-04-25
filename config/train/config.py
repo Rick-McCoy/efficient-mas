@@ -15,7 +15,7 @@ class TrainConfig:
     scheduler: str = "linear_warmup_decay"
     gradient_clip_val: float = 0.2
     precision: str = "16-mixed"
-    project: str = "voicebox"
+    project: str = "efficient_mas"
     mlflow: bool = False
     weight_average: bool = False
 
