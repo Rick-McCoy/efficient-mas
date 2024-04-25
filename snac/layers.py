@@ -1,10 +1,9 @@
 import math
 
 import torch
-import torch.nn as nn
-from torch.nn.utils.parametrizations import weight_norm
+from torch import nn
 
-from .attention import LocalMHA
+from snac.attention import LocalMHA
 
 
 class Encoder(nn.Module):
@@ -16,7 +15,7 @@ class Encoder(nn.Module):
         attn_window_size=32,
     ):
         super().__init__()
-        layers = [WNConv1d(1, d_model, kernel_size=7, padding=3)]
+        layers = [nn.Conv1d(1, d_model, kernel_size=7, padding=3)]
         for stride in strides:
             d_model *= 2
             groups = d_model // 2 if depthwise else 1
@@ -25,7 +24,7 @@ class Encoder(nn.Module):
             layers += [LocalMHA(dim=d_model, window_size=attn_window_size)]
         groups = d_model if depthwise else 1
         layers += [
-            WNConv1d(d_model, d_model, kernel_size=7, padding=3, groups=groups),
+            nn.Conv1d(d_model, d_model, kernel_size=7, padding=3, groups=groups),
         ]
         self.block = nn.Sequential(*layers)
 
@@ -47,11 +46,17 @@ class Decoder(nn.Module):
         super().__init__()
         if depthwise:
             layers = [
-                WNConv1d(input_channel, input_channel, kernel_size=7, padding=3, groups=input_channel),
-                WNConv1d(input_channel, channels, kernel_size=1),
+                nn.Conv1d(
+                    input_channel,
+                    input_channel,
+                    kernel_size=7,
+                    padding=3,
+                    groups=input_channel,
+                ),
+                nn.Conv1d(input_channel, channels, kernel_size=1),
             ]
         else:
-            layers = [WNConv1d(input_channel, channels, kernel_size=7, padding=3)]
+            layers = [nn.Conv1d(input_channel, channels, kernel_size=7, padding=3)]
 
         if attn_window_size is not None:
             layers += [LocalMHA(dim=channels, window_size=attn_window_size)]
@@ -60,11 +65,13 @@ class Decoder(nn.Module):
             input_dim = channels // 2**i
             output_dim = channels // 2 ** (i + 1)
             groups = output_dim if depthwise else 1
-            layers.append(DecoderBlock(input_dim, output_dim, stride, noise, groups=groups))
+            layers.append(
+                DecoderBlock(input_dim, output_dim, stride, noise, groups=groups)
+            )
 
         layers += [
             Snake1d(output_dim),
-            WNConv1d(output_dim, d_out, kernel_size=7, padding=3),
+            nn.Conv1d(output_dim, d_out, kernel_size=7, padding=3),
             nn.Tanh(),
         ]
         self.model = nn.Sequential(*layers)
@@ -80,9 +87,16 @@ class ResidualUnit(nn.Module):
         pad = ((kernel - 1) * dilation) // 2
         self.block = nn.Sequential(
             Snake1d(dim),
-            WNConv1d(dim, dim, kernel_size=kernel, dilation=dilation, padding=pad, groups=groups),
+            nn.Conv1d(
+                dim,
+                dim,
+                kernel_size=kernel,
+                dilation=dilation,
+                padding=pad,
+                groups=groups,
+            ),
             Snake1d(dim),
-            WNConv1d(dim, dim, kernel_size=1),
+            nn.Conv1d(dim, dim, kernel_size=1),
         )
 
     def forward(self, x):
@@ -102,7 +116,7 @@ class EncoderBlock(nn.Module):
             ResidualUnit(input_dim, dilation=3, groups=groups),
             ResidualUnit(input_dim, dilation=9, groups=groups),
             Snake1d(input_dim),
-            WNConv1d(
+            nn.Conv1d(
                 input_dim,
                 output_dim,
                 kernel_size=2 * stride,
@@ -118,7 +132,7 @@ class EncoderBlock(nn.Module):
 class NoiseBlock(nn.Module):
     def __init__(self, dim):
         super().__init__()
-        self.linear = WNConv1d(dim, dim, kernel_size=1, bias=False)
+        self.linear = nn.Conv1d(dim, dim, kernel_size=1, bias=False)
 
     def forward(self, x):
         B, C, T = x.shape
@@ -134,7 +148,7 @@ class DecoderBlock(nn.Module):
         super().__init__()
         layers = [
             Snake1d(input_dim),
-            WNConvTranspose1d(
+            nn.ConvTranspose1d(
                 input_dim,
                 output_dim,
                 kernel_size=2 * stride,
@@ -158,27 +172,14 @@ class DecoderBlock(nn.Module):
         return self.block(x)
 
 
-def WNConv1d(*args, **kwargs):
-    return weight_norm(nn.Conv1d(*args, **kwargs))
-
-
-def WNConvTranspose1d(*args, **kwargs):
-    return weight_norm(nn.ConvTranspose1d(*args, **kwargs))
-
-
-@torch.jit.script
-def snake(x, alpha):
-    shape = x.shape
-    x = x.reshape(shape[0], shape[1], -1)
-    x = x + (alpha + 1e-9).reciprocal() * torch.sin(alpha * x).pow(2)
-    x = x.reshape(shape)
-    return x
-
-
 class Snake1d(nn.Module):
     def __init__(self, channels):
         super().__init__()
         self.alpha = nn.Parameter(torch.ones(1, channels, 1))
 
     def forward(self, x):
-        return snake(x, self.alpha)
+        shape = x.shape
+        x = x.reshape(shape[0], shape[1], -1)
+        x = x + (self.alpha + 1e-9).reciprocal() * torch.sin(self.alpha * x).pow(2)
+        x = x.reshape(shape)
+        return x

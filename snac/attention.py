@@ -22,7 +22,12 @@ class LocalMHA(nn.Module):
         x = self.norm(x.transpose(1, 2))
         windows = T // self.window_size
         q, k, v = self.to_qkv(x).chunk(3, dim=-1)
-        q, k, v = map(lambda t: rearrange(t, "b (w n) (h d) -> b h w n d", w=windows, h=self.heads), (q, k, v))
+        q, k, v = map(
+            lambda t: rearrange(
+                t, "b (w n) (h d) -> b h w n d", w=windows, h=self.heads
+            ),
+            (q, k, v),
+        )
         if self.rel_pos is not None:
             pos_emb, scale = self.rel_pos(k)
             q, k = apply_rotary_pos_emb(q, k, pos_emb, scale)
@@ -40,7 +45,9 @@ class SinusoidalEmbeddings(nn.Module):
         # xpos related
         self.use_xpos = use_xpos
         self.scale_base = scale_base
-        assert not (use_xpos and scale_base is None), "scale base must be defined if using xpos"
+        assert not (
+            use_xpos and scale_base is None
+        ), "scale base must be defined if using xpos"
         scale = (torch.arange(0, dim, 2) + 0.4 * dim) / (1.4 * dim)
         self.register_buffer("scale", scale, persistent=False)
 

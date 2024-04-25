@@ -1,22 +1,20 @@
-from typing import List
-
 import torch
-import torch.nn as nn
-import torch.nn.functional as F
 from einops import rearrange
-
-from .layers import WNConv1d
+from torch import Tensor, nn
+from torch.nn import functional as F
 
 
 class VectorQuantize(nn.Module):
-    def __init__(self, input_dim: int, codebook_size: int, codebook_dim: int, stride: int = 1):
+    def __init__(
+        self, input_dim: int, codebook_size: int, codebook_dim: int, stride: int = 1
+    ):
         super().__init__()
         self.codebook_size = codebook_size
         self.codebook_dim = codebook_dim
         self.stride = stride
 
-        self.in_proj = WNConv1d(input_dim, codebook_dim, kernel_size=1)
-        self.out_proj = WNConv1d(codebook_dim, input_dim, kernel_size=1)
+        self.in_proj = nn.Conv1d(input_dim, codebook_dim, kernel_size=1)
+        self.out_proj = nn.Conv1d(codebook_dim, input_dim, kernel_size=1)
         self.codebook = nn.Embedding(codebook_size, codebook_dim)
 
     def forward(self, z):
@@ -26,7 +24,9 @@ class VectorQuantize(nn.Module):
         # Factorized codes (ViT-VQGAN) Project input into low-dimensional space
         z_e = self.in_proj(z)  # z_e : (B x D x T)
         z_q, indices = self.decode_latents(z_e)
-        z_q = z_e + (z_q - z_e).detach()  # noop in forward pass, straight-through gradient estimator in backward pass
+        z_q = (
+            z_e + (z_q - z_e).detach()
+        )  # noop in forward pass, straight-through gradient estimator in backward pass
 
         z_q = self.out_proj(z_q)
 
@@ -66,21 +66,24 @@ class ResidualVectorQuantize(nn.Module):
         input_dim: int = 512,
         codebook_size: int = 1024,
         codebook_dim: int = 8,
-        vq_strides: List[int] = [1, 1, 1, 1],
+        vq_strides: list[int] = [1, 1, 1, 1],
     ):
         super().__init__()
         self.n_codebooks = len(vq_strides)
         self.codebook_dim = codebook_dim
         self.codebook_size = codebook_size
         self.quantizers = nn.ModuleList(
-            [VectorQuantize(input_dim, codebook_size, codebook_dim, stride) for stride in vq_strides]
+            [
+                VectorQuantize(input_dim, codebook_size, codebook_dim, stride)
+                for stride in vq_strides
+            ]
         )
 
     def forward(self, z):
         z_q = 0
         residual = z
         codes = []
-        for i, quantizer in enumerate(self.quantizers):
+        for quantizer in self.quantizers:
             z_q_i, indices_i = quantizer(residual)
             z_q = z_q + z_q_i
             residual = residual - z_q_i
@@ -88,7 +91,7 @@ class ResidualVectorQuantize(nn.Module):
 
         return z_q, codes
 
-    def from_codes(self, codes: List[torch.Tensor]) -> torch.Tensor:
+    def from_codes(self, codes: list[Tensor]) -> Tensor:
         z_q = 0.0
         for i in range(self.n_codebooks):
             z_p_i = self.quantizers[i].decode_code(codes[i])

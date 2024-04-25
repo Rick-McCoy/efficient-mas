@@ -1,13 +1,13 @@
 import json
 import math
-from typing import List, Tuple
 
 import numpy as np
 import torch
-from torch import nn
+from huggingface_hub import hf_hub_download
+from torch import Tensor, nn
 
-from .layers import Encoder, Decoder
-from .vq import ResidualVectorQuantize
+from snac.layers import Decoder, Encoder
+from snac.vq import ResidualVectorQuantize
 
 
 class SNAC(nn.Module):
@@ -70,7 +70,7 @@ class SNAC(nn.Module):
         audio_data = nn.functional.pad(audio_data, (0, right_pad))
         return audio_data
 
-    def forward(self, audio_data: torch.Tensor) -> Tuple[torch.Tensor, List[torch.Tensor]]:
+    def forward(self, audio_data: Tensor) -> list[Tensor, list[Tensor]]:
         length = audio_data.shape[-1]
         audio_data = self.preprocess(audio_data)
         z = self.encoder(audio_data)
@@ -78,13 +78,13 @@ class SNAC(nn.Module):
         audio_hat = self.decoder(z_q)
         return audio_hat[..., :length], codes
 
-    def encode(self, audio_data: torch.Tensor) -> List[torch.Tensor]:
+    def encode(self, audio_data: Tensor) -> list[Tensor]:
         audio_data = self.preprocess(audio_data)
         z = self.encoder(audio_data)
         _, codes = self.quantizer(z)
         return codes
 
-    def decode(self, codes: List[torch.Tensor]) -> torch.Tensor:
+    def decode(self, codes: list[Tensor]) -> Tensor:
         z_q = self.quantizer.from_codes(codes)
         audio_hat = self.decoder(z_q)
         return audio_hat
@@ -98,10 +98,10 @@ class SNAC(nn.Module):
 
     @classmethod
     def from_pretrained(cls, repo_id, **kwargs):
-        from huggingface_hub import hf_hub_download
-
         config_path = hf_hub_download(repo_id=repo_id, filename="config.json", **kwargs)
-        model_path = hf_hub_download(repo_id=repo_id, filename="pytorch_model.bin", **kwargs)
+        model_path = hf_hub_download(
+            repo_id=repo_id, filename="pytorch_model.bin", **kwargs
+        )
         model = cls.from_config(config_path)
         state_dict = torch.load(model_path, map_location="cpu")
         model.load_state_dict(state_dict)
